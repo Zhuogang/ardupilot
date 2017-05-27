@@ -14,7 +14,7 @@ void setup (void)
     }
 }
 
-static uint16_t pwm = 1500;
+static uint16_t pwm = 5000;//1500
 static int8_t delta = 1;
 
 void loop (void) 
@@ -23,13 +23,13 @@ void loop (void)
     for (i=0; i<14; i++) {
         hal.rcout->write(i, pwm);
         pwm += delta;
-        if (delta > 0 && pwm >= 2000) {
-            delta = -1;
-            hal.console->printf("reversing\n");
-        } else if (delta < 0 && pwm <= 1000) {
+             if (delta > 0 && pwm >= 6000) {
+                    delta = -1;
+          hal.console->printf("reversing\n");
+         } else if (delta < 0 && pwm <= 4000) {
             delta = 1;
-            hal.console->printf("reversing\n");
-        }
+           hal.console->printf("reversing\n");
+         }
     }
     hal.scheduler->delay(5);
 }

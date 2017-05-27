@@ -3,12 +3,10 @@
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation, either version 3 of the License, or
    (at your option) any later version.
-
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
-
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -94,7 +92,7 @@ void AP_MotorsMatrix::output_to_motors()
         case SHUT_DOWN: {
             // sends minimum values out to the motors
             // set motor output based on thrust requests
-            for (i=0; i<AP_MOTORS_MAX_NUM_MOTORS; i++) {
+            for (i=0; i<4; i++) {
                 if (motor_enabled[i]) {
                     if (_disarm_disable_pwm && _disarm_safety_timer == 0 && !armed()) {
                         motor_out[i] = 0;
@@ -103,13 +101,27 @@ void AP_MotorsMatrix::output_to_motors()
                     }
                 }
             }
+            for (i=4; i<8; i++) {
+                if (motor_enabled[i]) {
+                    if (_disarm_disable_pwm && _disarm_safety_timer == 0 && !armed()) {
+                        motor_out[i] = 0.5f;
+                    } else {
+                        motor_out[i] = 0.5f;
+                    }
+                }
+            }
             break;
         }
         case SPIN_WHEN_ARMED:
             // sends output to motors when armed but not flying
-            for (i=0; i<AP_MOTORS_MAX_NUM_MOTORS; i++) {
+            for (i=0; i<4; i++) {
                 if (motor_enabled[i]) {
                     motor_out[i] = calc_spin_up_to_pwm();
+                }
+            }
+            for (i=4; i<8; i++) {
+                if (motor_enabled[i]) {
+                    motor_out[i] = 0.5f;
                 }
             }
             break;
@@ -201,17 +213,17 @@ void AP_MotorsMatrix::output_armed_stabilizing()
 
     // calculate roll and pitch for each motor
     // calculate the amount of yaw input that each motor can accept
-    for (i=0; i<AP_MOTORS_MAX_NUM_MOTORS; i++) {
+    for (i=0; i<4; i++) {
         if (motor_enabled[i]) {
             _thrust_rpyt_out[i] = roll_thrust * _roll_factor[i] + pitch_thrust * _pitch_factor[i];
             if (!is_zero(_yaw_factor[i])){
                 if (yaw_thrust * _yaw_factor[i] > 0.0f) {
-                    unused_range = fabsf((1.0f - (throttle_thrust_best_rpy + _thrust_rpyt_out[i]))/_yaw_factor[i]);
+                    unused_range = fabsf((1.0f - (throttle_thrust_best_rpy + _thrust_rpyt_out[i]))*_yaw_factor[i]);
                     if (yaw_allowed > unused_range) {
                         yaw_allowed = unused_range;
                     }
                 } else {
-                    unused_range = fabsf((throttle_thrust_best_rpy + _thrust_rpyt_out[i])/_yaw_factor[i]);
+                    unused_range = fabsf((throttle_thrust_best_rpy + _thrust_rpyt_out[i])*_yaw_factor[i]);
                     if (yaw_allowed > unused_range) {
                         yaw_allowed = unused_range;
                     }
@@ -221,20 +233,18 @@ void AP_MotorsMatrix::output_armed_stabilizing()
     }
 
     // todo: make _yaw_headroom 0 to 1
-    yaw_allowed = MAX(yaw_allowed, (float)_yaw_headroom/1000.0f);
+    yaw_allowed = 1.0f;
 
     if (fabsf(yaw_thrust) > yaw_allowed) {
         yaw_thrust = constrain_float(yaw_thrust, -yaw_allowed, yaw_allowed);
         limit.yaw = true;
-    }
+   }
 
     // add yaw to intermediate numbers for each motor
     rpy_low = 0.0f;
     rpy_high = 0.0f;
-    for (i=0; i<AP_MOTORS_MAX_NUM_MOTORS; i++) {
+    for (i=0; i<4; i++) {
         if (motor_enabled[i]) {
-            _thrust_rpyt_out[i] = _thrust_rpyt_out[i] + yaw_thrust * _yaw_factor[i];
-
             // record lowest roll+pitch+yaw command
             if (_thrust_rpyt_out[i] < rpy_low) {
                 rpy_low = _thrust_rpyt_out[i];
@@ -276,7 +286,7 @@ void AP_MotorsMatrix::output_armed_stabilizing()
     }
 
     // add scaled roll, pitch, constrained yaw and throttle for each motor
-    for (i=0; i<AP_MOTORS_MAX_NUM_MOTORS; i++) {
+    for (i=0; i<4; i++) {
         if (motor_enabled[i]) {
             _thrust_rpyt_out[i] = throttle_thrust_best_rpy + thr_adj + rpy_scale*_thrust_rpyt_out[i];
         }
@@ -284,9 +294,14 @@ void AP_MotorsMatrix::output_armed_stabilizing()
 
     // constrain all outputs to 0.0f to 1.0f
     // test code should be run with these lines commented out as they should not do anything
-    for (i=0; i<AP_MOTORS_MAX_NUM_MOTORS; i++) {
+    for (i=0; i<4; i++) {
         if (motor_enabled[i]) {
             _thrust_rpyt_out[i] = constrain_float(_thrust_rpyt_out[i], 0.0f, 1.0f);
+        }
+    }
+    for (i=4; i<8; i++) {
+        if (motor_enabled[i]) {
+            _thrust_rpyt_out[i] = constrain_float(yaw_thrust, 0.0f, 1.0f);
         }
     }
 }
@@ -380,10 +395,14 @@ void AP_MotorsMatrix::setup_motors(motor_frame_class frame_class, motor_frame_ty
         case MOTOR_FRAME_QUAD:
             switch (frame_type) {
                 case MOTOR_FRAME_TYPE_PLUS:
-                    add_motor(AP_MOTORS_MOT_1,  90, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 2);
-                    add_motor(AP_MOTORS_MOT_2, -90, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 4);
-                    add_motor(AP_MOTORS_MOT_3,   0, AP_MOTORS_MATRIX_YAW_FACTOR_CW,  1);
-                    add_motor(AP_MOTORS_MOT_4, 180, AP_MOTORS_MATRIX_YAW_FACTOR_CW,  3);
+                    add_motor(AP_MOTORS_MOT_1,  90, 0, 2);
+                    add_motor(AP_MOTORS_MOT_2, -90, 0, 4);
+                    add_motor(AP_MOTORS_MOT_3,   0, 0,  1);
+                    add_motor(AP_MOTORS_MOT_4, 180, 0,  3);
+                    add_motor(AP_MOTORS_MOT_5, 0, 90, -1, 6);
+                    add_motor(AP_MOTORS_MOT_6, 0, 90, -1, 8);
+                    add_motor(AP_MOTORS_MOT_7, 0, 90, -1,  5);
+                    add_motor(AP_MOTORS_MOT_8, 0, 90, -1,  7);
                     success = true;
                     break;
                 case MOTOR_FRAME_TYPE_X:
@@ -416,10 +435,8 @@ void AP_MotorsMatrix::setup_motors(motor_frame_class frame_class, motor_frame_ty
                         - no roll in rear motors
                         - no yaw in front motors
                         - should fly like some mix between a tricopter and X Quadcopter
-
                         Roll control comes only from the front motors, Yaw control only from the rear motors.
                         Roll & Pitch factor is measured by the angle away from the top of the forward axis to each arm.
-
                         Note: if we want the front motors to help with yaw,
                             motors 1's yaw factor should be changed to sin(radians(40)).  Where "40" is the vtail angle
                             motors 3's yaw factor should be changed to -sin(radians(40))
@@ -434,12 +451,10 @@ void AP_MotorsMatrix::setup_motors(motor_frame_class frame_class, motor_frame_ty
                     /*
                         The A-Shaped VTail is the exact same as a V-Shaped VTail, with one difference:
                         - The Yaw factors are reversed, because the rear motors are facing different directions
-
                         With V-Shaped VTails, the props make a V-Shape when spinning, but with
                         A-Shaped VTails, the props make an A-Shape when spinning.
                         - Rear thrust on a V-Shaped V-Tail Quad is outward
                         - Rear thrust on an A-Shaped V-Tail Quad is inward
-
                         Still functions the same as the V-Shaped VTail mixing below:
                         - Yaw control is entirely in the rear motors
                         - Roll is is entirely in the front motors
